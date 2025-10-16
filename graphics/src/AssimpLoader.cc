@@ -555,6 +555,7 @@ std::pair<std::string, ImagePtr> AssimpLoader::Implementation::LoadTexture(
     const std::string& _textureName) const
 {
   std::pair<std::string, ImagePtr> ret;
+  // gzdbg << "Loading " << _textureName << " = " << _texturePath.C_Str() << "\n";
   // Check if the texture is embedded or not
   auto embeddedTexture = _scene->GetEmbeddedTexture(_texturePath.C_Str());
   if (embeddedTexture)
@@ -733,6 +734,7 @@ Mesh *AssimpLoader::Load(const std::string &_filename)
 {
   Mesh *mesh = new Mesh();
   std::string path = common::parentPath(_filename);
+  gzdbg << "Loading " << _filename << " = " << path << "\n";
   const aiScene* scene = this->dataPtr->importer.ReadFile(_filename,
       aiProcess_JoinIdenticalVertices |
       aiProcess_RemoveRedundantMaterials |

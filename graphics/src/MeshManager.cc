@@ -86,6 +86,7 @@ class gz::common::MeshManager::Implementation
 
   /// \brief Mutex to protect the mesh map
   public: std::mutex mutex;
+  public: std::unordered_map<std::string,std::mutex> meshLoaderMutex;
 
   /// \brief True if assimp is used for loading all supported mesh formats
   public: bool forceAssimp;
@@ -152,6 +153,7 @@ const Mesh *MeshManager::Load(const std::string &_filename)
 
   if (this->HasMesh(_filename))
   {
+    std::lock_guard<std::mutex> lock(this->dataPtr->mutex);
     return this->dataPtr->meshes[_filename];
   }
 
@@ -162,22 +164,24 @@ const Mesh *MeshManager::Load(const std::string &_filename)
     extension = fullname.substr(fullname.rfind(".")+1, fullname.size());
     std::transform(extension.begin(), extension.end(),
         extension.begin(), ::tolower);
+    AssimpLoader localAssimpLoader;
+    ColladaLoader localColladaLoader;
     MeshLoader *loader = nullptr;
     this->SetAssimpEnvs();
     if (this->dataPtr->forceAssimp)
     {
-      loader = &this->dataPtr->assimpLoader;
+      loader = &localAssimpLoader;
     }
     else
     {
       if (extension == "stl" || extension == "stlb" || extension == "stla")
           loader = &this->dataPtr->stlLoader;
       else if (extension == "dae")
-        loader = &this->dataPtr->colladaLoader;
+        loader = &localColladaLoader;
       else if (extension == "obj")
         loader = &this->dataPtr->objLoader;
       else if (extension == "gltf" || extension == "glb" || extension == "fbx")
-        loader = &this->dataPtr->assimpLoader;
+        loader = &localAssimpLoader;
       else
       {
         gzerr << "Unsupported mesh format for file[" << _filename << "]\n";
@@ -186,12 +190,14 @@ const Mesh *MeshManager::Load(const std::string &_filename)
     }
     // This mutex prevents two threads from loading the same mesh at the
     // same time.
-    std::lock_guard<std::mutex> lock(this->dataPtr->mutex);
+    auto &mtx = this->dataPtr->meshLoaderMutex[_filename];
+    std::lock_guard<std::mutex> lockMesh(mtx);
     if (!this->HasMesh(_filename))
     {
       if ((mesh = loader->Load(fullname)) != nullptr)
       {
         mesh->SetName(_filename);
+        std::lock_guard<std::mutex> lock(this->dataPtr->mutex);
         this->dataPtr->meshes.insert(std::make_pair(_filename, mesh));
       }
       else
@@ -199,6 +205,7 @@ const Mesh *MeshManager::Load(const std::string &_filename)
     }
     else
     {
+      std::lock_guard<std::mutex> lock(this->dataPtr->mutex);
       mesh = this->dataPtr->meshes[_filename];
     }
   }
@@ -302,6 +309,7 @@ bool MeshManager::RemoveMesh(const std::string &_name)
 //////////////////////////////////////////////////
 bool MeshManager::HasMesh(const std::string &_name) const
 {
+  std::lock_guard<std::mutex> lock(this->dataPtr->mutex);
   if (_name.empty())
     return false;
 
